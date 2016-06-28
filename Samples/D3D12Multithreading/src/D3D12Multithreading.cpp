@@ -82,8 +82,11 @@ void D3D12Multithreading::LoadPipeline()
 	}
 	else
 	{
+		ComPtr<IDXGIAdapter1> hardwareAdapter;
+		GetHardwareAdapter(factory.Get(), &hardwareAdapter);
+
 		ThrowIfFailed(D3D12CreateDevice(
-			nullptr,
+			hardwareAdapter.Get(),
 			D3D_FEATURE_LEVEL_11_0,
 			IID_PPV_ARGS(&m_device)
 			));
@@ -116,6 +119,9 @@ void D3D12Multithreading::LoadPipeline()
 		));
 
 	ThrowIfFailed(swapChain.As(&m_swapChain));
+
+	// This sample does not support fullscreen transitions.
+	ThrowIfFailed(factory->MakeWindowAssociation(m_hwnd, DXGI_MWA_NO_ALT_ENTER));
 
 	m_frameIndex = m_swapChain->GetCurrentBackBufferIndex();
 
@@ -547,7 +553,7 @@ void D3D12Multithreading::LoadAssets()
 		m_fenceValue++;
 
 		// Create an event handle to use for frame synchronization.
-		m_fenceEvent = CreateEventEx(nullptr, FALSE, FALSE, EVENT_ALL_ACCESS);
+		m_fenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
 		if (m_fenceEvent == nullptr)
 		{
 			ThrowIfFailed(HRESULT_FROM_WIN32(GetLastError()));
@@ -576,7 +582,8 @@ void D3D12Multithreading::LoadContexts()
 	{
 		static unsigned int WINAPI thunk(LPVOID lpParameter)
 		{
-			D3D12Multithreading::Get()->WorkerThread(lpParameter);
+			ThreadParameter* parameter = reinterpret_cast<ThreadParameter*>(lpParameter);
+			D3D12Multithreading::Get()->WorkerThread(parameter->threadIndex);
 			return 0;
 		}
 	};
@@ -601,11 +608,13 @@ void D3D12Multithreading::LoadContexts()
 			FALSE,
 			NULL);
 
+		m_threadParameters[i].threadIndex = i;
+
 		m_threadHandles[i] = reinterpret_cast<HANDLE>(_beginthreadex(
 			nullptr,
 			0,
 			threadwrapper::thunk,
-			reinterpret_cast<LPVOID>(i),
+			reinterpret_cast<LPVOID>(&m_threadParameters[i]),
 			0,
 			nullptr));
 
@@ -636,7 +645,7 @@ void D3D12Multithreading::OnUpdate()
 	// If it is, wait for it to complete.
 	if (m_pCurrentFrameResource->m_fenceValue > lastCompletedFence)
 	{
-		HANDLE eventHandle = CreateEventEx(nullptr, FALSE, FALSE, EVENT_ALL_ACCESS);
+		HANDLE eventHandle = CreateEvent(nullptr, FALSE, FALSE, nullptr);
 		if (eventHandle == nullptr)
 		{
 			ThrowIfFailed(HRESULT_FROM_WIN32(GetLastError()));
@@ -873,9 +882,8 @@ void D3D12Multithreading::EndFrame()
 
 // Worker thread body. workerIndex is an integer from 0 to NumContexts 
 // describing the worker's thread index.
-void D3D12Multithreading::WorkerThread(LPVOID workerIndex)
+void D3D12Multithreading::WorkerThread(int threadIndex)
 {
-	int threadIndex = reinterpret_cast<int>(workerIndex);
 	assert(threadIndex >= 0);
 	assert(threadIndex < NumContexts);
 #if !SINGLETHREADED
@@ -968,7 +976,7 @@ void D3D12Multithreading::SetCommonPipelineState(ID3D12GraphicsCommandList* pCom
 
 	pCommandList->RSSetViewports(1, &m_viewport);
 	pCommandList->RSSetScissorRects(1, &m_scissorRect);
-	pCommandList->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+	pCommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	pCommandList->IASetVertexBuffers(0, 1, &m_vertexBufferView);
 	pCommandList->IASetIndexBuffer(&m_indexBufferView);
 	pCommandList->SetGraphicsRootDescriptorTable(3, m_samplerHeap->GetGPUDescriptorHandleForHeapStart());

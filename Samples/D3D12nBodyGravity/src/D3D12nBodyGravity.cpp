@@ -96,8 +96,11 @@ void D3D12nBodyGravity::LoadPipeline()
 	}
 	else
 	{
+		ComPtr<IDXGIAdapter1> hardwareAdapter;
+		GetHardwareAdapter(factory.Get(), &hardwareAdapter);
+
 		ThrowIfFailed(D3D12CreateDevice(
-			nullptr,
+			hardwareAdapter.Get(),
 			D3D_FEATURE_LEVEL_11_0,
 			IID_PPV_ARGS(&m_device)
 			));
@@ -131,6 +134,9 @@ void D3D12nBodyGravity::LoadPipeline()
 		));
 
 	ThrowIfFailed(swapChain.As(&m_swapChain));
+
+	// This sample does not support fullscreen transitions.
+	ThrowIfFailed(factory->MakeWindowAssociation(m_hwnd, DXGI_MWA_NO_ALT_ENTER));
 
 	m_frameIndex = m_swapChain->GetCurrentBackBufferIndex();
 
@@ -339,7 +345,7 @@ void D3D12nBodyGravity::LoadAssets()
 		ThrowIfFailed(m_device->CreateFence(m_renderContextFenceValue, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_renderContextFence)));
 		m_renderContextFenceValue++;
 
-		m_renderContextFenceEvent = CreateEventEx(nullptr, FALSE, FALSE, EVENT_ALL_ACCESS);
+		m_renderContextFenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
 		if (m_renderContextFenceEvent == nullptr)
 		{
 			ThrowIfFailed(HRESULT_FROM_WIN32(GetLastError()));
@@ -396,7 +402,7 @@ float D3D12nBodyGravity::RandomPercent()
 	return ret / 5000.0f;
 }
 
-void D3D12nBodyGravity::LoadParticles(Particle* pParticles, const XMFLOAT3& center, const XMFLOAT4& velocity, float spread, UINT numParticles)
+void D3D12nBodyGravity::LoadParticles(_Out_writes_(numParticles) Particle* pParticles, const XMFLOAT3& center, const XMFLOAT4& velocity, float spread, UINT numParticles)
 {
 	srand(0);
 	for (UINT i = 0; i < numParticles; i++)
@@ -526,7 +532,7 @@ void D3D12nBodyGravity::CreateAsyncContexts()
 		ThrowIfFailed(m_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_COMPUTE, m_computeAllocator[threadIndex].Get(), nullptr, IID_PPV_ARGS(&m_computeCommandList[threadIndex])));
 		ThrowIfFailed(m_device->CreateFence(0, D3D12_FENCE_FLAG_SHARED, IID_PPV_ARGS(&m_threadFences[threadIndex])));
 
-		m_threadFenceEvents[threadIndex] = CreateEventEx(nullptr, FALSE, FALSE, EVENT_ALL_ACCESS);
+		m_threadFenceEvents[threadIndex] = CreateEvent(nullptr, FALSE, FALSE, nullptr);
 		if (m_threadFenceEvents[threadIndex] == nullptr)
 		{
 			ThrowIfFailed(HRESULT_FROM_WIN32(GetLastError()));
@@ -622,7 +628,7 @@ void D3D12nBodyGravity::PopulateCommandList()
 	m_commandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
 
 	m_commandList->IASetVertexBuffers(0, 1, &m_vertexBufferView);
-	m_commandList->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_POINTLIST);
+	m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_POINTLIST);
 	m_commandList->RSSetScissorRects(1, &m_scissorRect);
 
 	// Indicate that the back buffer will be used as a render target.

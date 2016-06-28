@@ -66,8 +66,11 @@ void D3D12PredicationQueries::LoadPipeline()
 	}
 	else
 	{
+		ComPtr<IDXGIAdapter1> hardwareAdapter;
+		GetHardwareAdapter(factory.Get(), &hardwareAdapter);
+
 		ThrowIfFailed(D3D12CreateDevice(
-			nullptr,
+			hardwareAdapter.Get(),
 			D3D_FEATURE_LEVEL_11_0,
 			IID_PPV_ARGS(&m_device)
 			));
@@ -100,6 +103,9 @@ void D3D12PredicationQueries::LoadPipeline()
 		));
 
 	ThrowIfFailed(swapChain.As(&m_swapChain));
+
+	// This sample does not support fullscreen transitions.
+	ThrowIfFailed(factory->MakeWindowAssociation(m_hwnd, DXGI_MWA_NO_ALT_ENTER));
 
 	m_frameIndex = m_swapChain->GetCurrentBackBufferIndex();
 
@@ -307,7 +313,7 @@ void D3D12PredicationQueries::LoadAssets()
 		ThrowIfFailed(m_device->CreateCommittedResource(
 			&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
 			D3D12_HEAP_FLAG_NONE,
-			&CD3DX12_RESOURCE_DESC::Buffer(CbvCountPerFrame * sizeof(m_constantBufferData)),
+			&CD3DX12_RESOURCE_DESC::Buffer(FrameCount * sizeof(m_constantBufferData)),
 			D3D12_RESOURCE_STATE_GENERIC_READ,
 			nullptr,
 			IID_PPV_ARGS(&m_constantBuffer)));
@@ -316,7 +322,7 @@ void D3D12PredicationQueries::LoadAssets()
 		// app closes. Keeping things mapped for the lifetime of the resource is okay.
 		ZeroMemory(&m_constantBufferData, sizeof(m_constantBufferData));
 		ThrowIfFailed(m_constantBuffer->Map(0, nullptr, reinterpret_cast<void**>(&m_pCbvDataBegin)));
-		ZeroMemory(m_pCbvDataBegin, CbvCountPerFrame * sizeof(m_constantBufferData));
+		ZeroMemory(m_pCbvDataBegin, FrameCount * sizeof(m_constantBufferData));
 
 		// Create constant buffer views to access the upload buffer.
 		CD3DX12_CPU_DESCRIPTOR_HANDLE cpuHandle(m_cbvHeap->GetCPUDescriptorHandleForHeapStart());
@@ -390,7 +396,7 @@ void D3D12PredicationQueries::LoadAssets()
 		m_fenceValues[m_frameIndex]++;
 
 		// Create an event handle to use for frame synchronization.
-		m_fenceEvent = CreateEventEx(nullptr, FALSE, FALSE, EVENT_ALL_ACCESS);
+		m_fenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
 		if (m_fenceEvent == nullptr)
 		{
 			ThrowIfFailed(HRESULT_FROM_WIN32(GetLastError()));
